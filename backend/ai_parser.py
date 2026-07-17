@@ -31,10 +31,16 @@ Jika tidak ada yang match, set matched_menu_id ke null."""
 
 
 async def parse_message(raw_text: str, menu_items: list[dict]) -> dict:
-    """Parse raw WhatsApp message → structured items.
+    """Parses a raw WhatsApp message into structured transaction items using GPT-4o-mini.
 
-    menu_items: [{"id": "...", "name": "Nasi Uduk", "price": 8000, "aliases": ["nasduk"]}]
-    Returns: {"items": [{"name": "...", "qty": 3, "matched_menu_id": "...", "price_override": null}]}
+    Args:
+        raw_text (str): The raw text message received from the user via WhatsApp.
+        menu_items (list[dict]): A list of dictionaries representing the user's available menu items.
+            Expected format: [{"id": "...", "name": "Nasi Uduk", "price": 8000, "aliases": ["nasduk"]}]
+
+    Returns:
+        dict: A dictionary containing the parsed items or an error.
+            Expected format: {"items": [{"name": "...", "qty": 3, "matched_menu_id": "...", "price_override": None}]}
     """
     if not settings.openai_api_key:
         # Fallback: simple regex parser when no OpenAI key
@@ -59,7 +65,15 @@ async def parse_message(raw_text: str, menu_items: list[dict]) -> dict:
 
 
 def _fallback_parse(text: str) -> dict:
-    """Simple fallback when OpenAI is unavailable."""
+    """A simple regex-based fallback parser when the OpenAI API key is unavailable.
+
+    Args:
+        text (str): The raw text message to parse.
+
+    Returns:
+        dict: A dictionary containing the parsed items extracted using regex patterns.
+            Expected format: {"items": [{"name": "...", "qty": 3, "matched_menu_id": None, "price_override": None}]}
+    """
     import re
     items = []
     # Pattern: "3 item_name" or "item_name x3" or "item_name 3"
