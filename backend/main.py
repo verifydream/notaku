@@ -1,3 +1,4 @@
+from sqlalchemy.orm import selectinload
 """NotaKu — WhatsApp-native bookkeeping for Indonesian UMKM."""
 
 import os
@@ -263,7 +264,7 @@ async def _handle_rekap(user: User, db: AsyncSession):
     today_end = today_start + timedelta(days=1)
 
     result = await db.execute(
-        select(Transaction).where(
+        select(Transaction).options(selectinload(Transaction.items)).where(
             and_(
                 Transaction.user_id == user.id,
                 Transaction.created_at >= today_start,
@@ -284,7 +285,7 @@ async def _handle_rekap(user: User, db: AsyncSession):
 
     # Top items
     item_result = await db.execute(
-        select(TransactionItem, func.sum(TransactionItem.quantity).label("total_qty"))
+        select(TransactionItem.menu_item_id, func.sum(TransactionItem.quantity).label("total_qty"))
         .join(Transaction)
         .where(
             and_(
@@ -306,9 +307,9 @@ async def _handle_rekap(user: User, db: AsyncSession):
     lines.append(f"🧾 Transaksi: {count}")
     if top:
         lines.append("\n🏆 *Top item:*")
-        for ti, qty in top:
-            mi = next((m for m in [] if m.id == ti.menu_item_id), None)
-            lines.append(f"• {ti.quantity}x item")
+        for menu_id, qty in top:
+            mi = next((m for m in [] if m.id == menu_id), None)
+            lines.append(f"• {qty}x item")
 
     await send_message(user.phone, "\n".join(lines))
     return {"status": "recap_sent"}
@@ -368,7 +369,7 @@ async def list_transactions(phone: str, db: AsyncSession = Depends(get_db)):
         from fastapi import HTTPException
         raise HTTPException(404, "User not found")
     result = await db.execute(
-        select(Transaction)
+        select(Transaction).options(selectinload(Transaction.items))
         .where(Transaction.user_id == user.id)
         .order_by(Transaction.created_at.desc())
         .limit(100)
@@ -388,7 +389,7 @@ async def daily_summary(phone: str, db: AsyncSession = Depends(get_db)):
     tomorrow = today + timedelta(days=1)
 
     result = await db.execute(
-        select(Transaction).where(
+        select(Transaction).options(selectinload(Transaction.items)).where(
             and_(Transaction.user_id == user.id, Transaction.created_at >= today, Transaction.created_at < tomorrow)
         )
     )
