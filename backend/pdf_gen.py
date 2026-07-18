@@ -9,7 +9,14 @@ from reportlab.pdfgen import canvas
 
 
 def _fmt_rp(amount: int) -> str:
-    """Format Rupiah: 42000 → 'Rp 42.000'."""
+    """Formats an integer amount into a Rupiah string.
+
+    Args:
+        amount (int): The amount in integer format (e.g., 42000).
+
+    Returns:
+        str: The formatted currency string (e.g., 'Rp 42.000').
+    """
     s = str(amount)[::-1]
     chunks = [s[i:i + 3] for i in range(0, len(s), 3)]
     return "Rp " + ".".join(chunks)[::-1]
@@ -17,12 +24,25 @@ def _fmt_rp(amount: int) -> str:
 
 def generate_nota(
     warung_name: str,
-    items: list[dict],  # [{"name": str, "qty": int, "subtotal": int}]
+    items: list[dict],
     total: int,
     transaction_id: str,
     date: datetime | None = None,
 ) -> str:
-    """Generate nota PDF. Returns file path."""
+    """Generates a PDF receipt (nota) using ReportLab.
+
+    Args:
+        warung_name (str): The name of the warung/shop.
+        items (list[dict]): A list of dictionaries representing the transaction items.
+            Expected format: [{"name": str, "qty": int, "subtotal": int}]
+        total (int): The total amount for the transaction.
+        transaction_id (str): The unique transaction ID.
+        date (datetime | None, optional): The date and time of the transaction.
+            Defaults to the current datetime if not provided.
+
+    Returns:
+        str: The file path to the generated temporary PDF file.
+    """
     date = date or datetime.now()
     width, height = A6  # 105mm x 148mm
 

@@ -1,4 +1,8 @@
-"""SQLAlchemy models."""
+"""SQLAlchemy database models for NotaKu.
+
+This module contains the SQLAlchemy declarative base models representing
+the core entities: Users, MenuItems, Transactions, and TransactionItems.
+"""
 
 import uuid
 from datetime import datetime, timezone
@@ -8,14 +12,35 @@ from database import Base
 
 
 def utcnow():
+    """Generates the current UTC datetime.
+
+    Returns:
+        datetime: A timezone-aware datetime object representing the current UTC time.
+    """
     return datetime.now(timezone.utc)
 
 
 def gen_uuid():
+    """Generates a UUID string.
+
+    Returns:
+        str: A string representation of a randomly generated UUID4.
+    """
     return str(uuid.uuid4())
 
 
 class User(Base):
+    """Represents a warung owner or user in the system.
+
+    Attributes:
+        id (str): Primary key, UUID string.
+        phone (str): The user's WhatsApp phone number (unique).
+        name (str | None): The user's name.
+        warung_name (str | None): The name of the user's shop/warung.
+        created_at (datetime): Timestamp when the user was created.
+        menu_items (list[MenuItem]): Relationship to the user's menu items.
+        transactions (list[Transaction]): Relationship to the user's transactions.
+    """
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
@@ -29,6 +54,19 @@ class User(Base):
 
 
 class MenuItem(Base):
+    """Represents an item available for sale by a specific user.
+
+    Attributes:
+        id (str): Primary key, UUID string.
+        user_id (str): Foreign key linking to the User.
+        name (str): Name of the menu item.
+        price (int): Price of the item in Rupiah.
+        aliases (list[str] | None): List of alternative names for AI matching.
+        active (bool): Whether the item is currently active/available.
+        created_at (datetime): Timestamp when the item was created.
+        user (User): Relationship back to the owner User.
+        transaction_items (list[TransactionItem]): Relationship to transaction items.
+    """
     __tablename__ = "menu_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
@@ -44,6 +82,19 @@ class MenuItem(Base):
 
 
 class Transaction(Base):
+    """Represents a transaction (sale or expense) made by a user.
+
+    Attributes:
+        id (str): Primary key, UUID string.
+        user_id (str): Foreign key linking to the User.
+        customer_phone (str | None): Phone number of the customer, if applicable.
+        total (int): Total amount of the transaction in Rupiah.
+        type (str): Type of transaction, typically "sale" or "expense".
+        note (str | None): Optional note regarding the transaction.
+        created_at (datetime): Timestamp when the transaction was recorded.
+        user (User): Relationship back to the owner User.
+        items (list[TransactionItem]): Relationship to the items within this transaction.
+    """
     __tablename__ = "transactions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
@@ -59,6 +110,18 @@ class Transaction(Base):
 
 
 class TransactionItem(Base):
+    """Represents an individual line item within a Transaction.
+
+    Attributes:
+        id (str): Primary key, UUID string.
+        transaction_id (str): Foreign key linking to the Transaction.
+        menu_item_id (str): Foreign key linking to the MenuItem.
+        quantity (int): Number of items purchased.
+        unit_price (int): Price per unit at the time of transaction.
+        subtotal (int): Total cost for this line item (quantity * unit_price).
+        transaction (Transaction): Relationship back to the parent Transaction.
+        menu_item (MenuItem): Relationship back to the associated MenuItem.
+    """
     __tablename__ = "transaction_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)

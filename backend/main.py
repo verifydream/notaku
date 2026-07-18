@@ -23,6 +23,11 @@ from settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI lifespan context manager to initialize the database on startup.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
+    """
     await init_db()
     yield
 
@@ -49,6 +54,18 @@ pending: dict[str, dict] = {}
 # ---------------------------------------------------------------------------
 @app.post("/webhook/fonnte")
 async def webhook_fonnte(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handles incoming webhook callbacks from Fonnte (WhatsApp).
+
+    Processes messages to execute commands (e.g., adding a menu, requesting a recap)
+    or parses natural language into a transaction.
+
+    Args:
+        request (Request): The incoming FastAPI request containing the JSON payload.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        dict: A status dictionary indicating the result of the webhook processing.
+    """
     body = await request.json()
     phone: str = body.get("phone", "").strip()
     text: str = body.get("message", "").strip()
@@ -95,7 +112,16 @@ async def webhook_fonnte(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 async def _handle_add_menu(user: User, text: str, db: AsyncSession):
-    """Parse 'tambah menu: nasi uduk Rp8000' → create menu item."""
+    """Parses a command to add a new menu item and saves it to the database.
+
+    Args:
+        user (User): The user performing the action.
+        text (str): The raw text command (e.g., 'tambah menu: nasi uduk Rp8000').
+        db (AsyncSession): The database session.
+
+    Returns:
+        dict: A status dictionary.
+    """
     try:
         # "tambah menu: nasi uduk Rp8000"
         content = text.split(":", 1)[1].strip() if ":" in text else text.replace("tambah menu", "").strip()
@@ -126,7 +152,15 @@ async def _handle_add_menu(user: User, text: str, db: AsyncSession):
 
 
 async def _handle_list_menu(user: User, db: AsyncSession):
-    """List all active menu items."""
+    """Sends the user a list of all their active menu items via WhatsApp.
+
+    Args:
+        user (User): The user requesting the menu list.
+        db (AsyncSession): The database session.
+
+    Returns:
+        dict: A status dictionary.
+    """
     result = await db.execute(
         select(MenuItem).where(and_(MenuItem.user_id == user.id, MenuItem.active == True))
     )
@@ -143,7 +177,19 @@ async def _handle_list_menu(user: User, db: AsyncSession):
 
 
 async def _handle_parse(user: User, text: str, db: AsyncSession):
-    """Parse message as transaction items."""
+    """Parses a natural language message into a pending transaction.
+
+    Utilizes GPT-4o-mini via the AI parser to match text to the user's menu items.
+    If successfully matched, stores the transaction in memory pending confirmation.
+
+    Args:
+        user (User): The user creating the transaction.
+        text (str): The natural language text (e.g., "3 nasi uduk, 1 kopi").
+        db (AsyncSession): The database session.
+
+    Returns:
+        dict: A status dictionary indicating whether parsing succeeded or failed.
+    """
     # Get menu items
     result = await db.execute(
         select(MenuItem).where(and_(MenuItem.user_id == user.id, MenuItem.active == True))
@@ -214,7 +260,15 @@ async def _handle_parse(user: User, text: str, db: AsyncSession):
 
 
 async def _handle_confirm(user: User, db: AsyncSession):
-    """Confirm and save pending transaction."""
+    """Confirms a pending transaction, saves it to the database, and generates a PDF nota.
+
+    Args:
+        user (User): The user confirming the transaction.
+        db (AsyncSession): The database session.
+
+    Returns:
+        dict: A status dictionary indicating the confirmation result.
+    """
     if user.id not in pending:
         await send_message(user.phone, "Tidak ada transaksi yang pending. Kirim item dulu.")
         return {"status": "no_pending"}
@@ -258,7 +312,15 @@ async def _handle_confirm(user: User, db: AsyncSession):
 
 
 async def _handle_rekap(user: User, db: AsyncSession):
-    """Generate daily recap."""
+    """Generates and sends a daily recap of sales, expenses, and profits.
+
+    Args:
+        user (User): The user requesting the recap.
+        db (AsyncSession): The database session.
+
+    Returns:
+        dict: A status dictionary.
+    """
     today_start = datetime.now(timezone(timedelta(hours=7))).replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
 
@@ -315,6 +377,14 @@ async def _handle_rekap(user: User, db: AsyncSession):
 
 
 def _fmt_rp(amount: int) -> str:
+    """Formats an integer amount into a Rupiah string.
+
+    Args:
+        amount (int): The amount in integer format (e.g., 42000).
+
+    Returns:
+        str: The formatted currency string (e.g., 'Rp 42.000').
+    """
     s = str(abs(amount))[::-1]
     chunks = [s[i:i + 3] for i in range(0, len(s), 3)]
     return "Rp " + ".".join(chunks)[::-1]
@@ -325,6 +395,18 @@ def _fmt_rp(amount: int) -> str:
 # ---------------------------------------------------------------------------
 @app.get("/api/users/{phone}", response_model=UserOut)
 async def get_user(phone: str, db: AsyncSession = Depends(get_db)):
+    """Retrieves user information by phone number.
+
+    Args:
+        phone (str): The user's WhatsApp phone number.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        UserOut: The user information.
+
+    Raises:
+        HTTPException: If the user is not found.
+    """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
@@ -335,6 +417,18 @@ async def get_user(phone: str, db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/users/{phone}/menu", response_model=list[MenuItemOut])
 async def list_menu(phone: str, db: AsyncSession = Depends(get_db)):
+    """Retrieves all active menu items for a specific user.
+
+    Args:
+        phone (str): The user's WhatsApp phone number.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        list[MenuItemOut]: A list of menu items.
+
+    Raises:
+        HTTPException: If the user is not found.
+    """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
@@ -348,6 +442,19 @@ async def list_menu(phone: str, db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/users/{phone}/menu", response_model=MenuItemOut)
 async def add_menu(phone: str, data: MenuItemCreate, db: AsyncSession = Depends(get_db)):
+    """Adds a new menu item for a specific user via the REST API.
+
+    Args:
+        phone (str): The user's WhatsApp phone number.
+        data (MenuItemCreate): The menu item data to create.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        MenuItemOut: The created menu item.
+
+    Raises:
+        HTTPException: If the user is not found.
+    """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
@@ -362,6 +469,18 @@ async def add_menu(phone: str, data: MenuItemCreate, db: AsyncSession = Depends(
 
 @app.get("/api/users/{phone}/transactions", response_model=list[TransactionOut])
 async def list_transactions(phone: str, db: AsyncSession = Depends(get_db)):
+    """Retrieves a list of recent transactions for a specific user.
+
+    Args:
+        phone (str): The user's WhatsApp phone number.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        list[TransactionOut]: A list of up to 100 recent transactions.
+
+    Raises:
+        HTTPException: If the user is not found.
+    """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
@@ -378,6 +497,18 @@ async def list_transactions(phone: str, db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/users/{phone}/summary", response_model=DailySummary)
 async def daily_summary(phone: str, db: AsyncSession = Depends(get_db)):
+    """Generates a daily summary of sales and expenses for the current day.
+
+    Args:
+        phone (str): The user's WhatsApp phone number.
+        db (AsyncSession, optional): The database session. Defaults to Depends(get_db).
+
+    Returns:
+        DailySummary: The daily financial summary.
+
+    Raises:
+        HTTPException: If the user is not found.
+    """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if not user:
@@ -408,4 +539,9 @@ async def daily_summary(phone: str, db: AsyncSession = Depends(get_db)):
 
 @app.get("/health")
 async def health():
+    """Health check endpoint to verify the service is running.
+
+    Returns:
+        dict: A status dictionary indicating the service is healthy.
+    """
     return {"status": "ok", "service": "notaku"}
